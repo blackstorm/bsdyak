@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    name: Lint, Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Run lint, unit, and integration stages
+        run: |
+          ./scripts/ci.sh lint
+          ./scripts/ci.sh unit
+          ./scripts/ci.sh integration
+
+  build-matrix:
+    name: Pure-Go Cross-Build Matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build multi-OS static binaries and run CLI checks
+        run: ./scripts/ci.sh build-matrix
+
+  docs:
+    name: VitePress Docs Build (bsdyak.com)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build website
+        run: ./scripts/ci.sh docs
+
+  e2e-freebsd:
+    name: FreeBSD 14.5 Kernel E2E (QEMU/KVM)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [lint-and-test, build-matrix]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Install QEMU/KVM and ISO tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils xorriso xz-utils
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
+
+      - name: Cache FreeBSD 14.5 ZFS cloud image
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/yak-e2e
+          key: freebsd-vm-14.5-RELEASE-zfs-v1
+
+      - name: Run live FreeBSD VM E2E pipeline
+        run: ./scripts/ci.sh e2e-freebsd

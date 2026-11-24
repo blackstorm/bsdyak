@@ -1,0 +1,21 @@
+# Build artifacts & test outputs
+dist/
+*.test
+coverage.out
+.yak/
+
+# VitePress website
+website/node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
+
+# QEMU / VM images & ISOs
+*.qcow2
+*.qcow2.xz
+*.iso
+.cache/
+
+# OS / Editor
+.DS_Store
+*.swp
+*~

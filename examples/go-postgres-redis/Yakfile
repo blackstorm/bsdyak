@@ -1,0 +1,113 @@
+project "shop" {
+  freebsd = "14.2-RELEASE"
+}
+
+include = [
+  "services/postgres.hcl",
+  "services/redis.hcl",
+]
+
+target "prod" {
+  host    = "deploy@203.0.113.10"
+  default = true
+}
+
+storage "uploads" {
+  size                   = "20G"
+  snapshot_before_deploy = true
+}
+
+image "backend" {
+  stage "go-build" {
+    on       = "server"
+    packages = ["go123", "pkgconf"]
+    cache    = ["/go/pkg/mod", "/root/.cache/go-build"]
+    env = {
+      CGO_ENABLED = "0"
+    }
+    steps = [
+      "go build -trimpath -o /out/api ./cmd/api",
+      "go build -trimpath -o /out/worker ./cmd/worker",
+      "go build -trimpath -o /out/migrator ./cmd/migrator",
+    ]
+  }
+
+  runtime {
+    packages = ["ca_root_nss", "tzdata"]
+    setup = [
+      "pw useradd -n app -m -s /usr/sbin/nologin",
+      "mkdir -p /app/uploads && chown app:app /app/uploads",
+    ]
+    copy {
+      from = stage.go-build
+      src  = "/out/*"
+      dst  = "/app/"
+    }
+    user    = "app"
+    workdir = "/app"
+  }
+}
+
+service "api" {
+  image      = image.backend
+  depends_on = [service.db, service.cache]
+  strategy   = "blue-green"
+
+  mount {
+    source = storage.uploads
+    target = "/app/uploads"
+    owner  = "app:app"
+  }
+
+  env = {
+    DB_HOST    = service.db.host
+    REDIS_HOST = service.cache.host
+    DB_PASS    = secret.postgres_password
+    JWT_SECRET = secret.jwt_secret
+  }
+
+  migrate = "/app/migrator up"
+  cmd     = "/app/api"
+  port    = 8080
+
+  healthcheck {
+    http     = "/healthz"
+    interval = "2s"
+    timeout  = "15s"
+  }
+
+  expose {
+    listen = "127.0.0.1:18080"
+    to     = 8080
+  }
+
+  resources {
+    memory = "512M"
+    cpu    = "100%"
+  }
+}
+
+service "worker" {
+  image      = image.backend
+  depends_on = [service.db, service.cache]
+  strategy   = "recreate"
+  stop_grace = "30s"
+
+  mount {
+    source = storage.uploads
+    target = "/app/uploads"
+    owner  = "app:app"
+  }
+
+  env = {
+    DB_HOST    = service.db.host
+    REDIS_HOST = service.cache.host
+    DB_PASS    = secret.postgres_password
+  }
+
+  cmd = "/app/worker"
+
+  resources {
+    memory = "512M"
+  }
+}

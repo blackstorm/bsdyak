@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build release archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist/release
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          LDFLAGS="-s -w -X github.com/blackstorm/bsdyak/internal/version.Version=${VERSION} -X github.com/blackstorm/bsdyak/internal/version.Commit=${COMMIT} -X github.com/blackstorm/bsdyak/internal/version.Date=${DATE}"
+
+          for target in \
+            "freebsd/amd64" \
+            "freebsd/arm64" \
+            "linux/amd64" \
+            "linux/arm64" \
+            "darwin/amd64" \
+            "darwin/arm64"
+          do
+            GOOS=${target%/*}
+            GOARCH=${target#*/}
+            STAGE="dist/stage-${GOOS}-${GOARCH}"
+            mkdir -p "${STAGE}"
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -ldflags "${LDFLAGS}" -o "${STAGE}/yak" ./cmd/yak
+            cp LICENSE README.md "${STAGE}/"
+            tar -C "${STAGE}" -czf "dist/release/yak-${VERSION}-${GOOS}-${GOARCH}.tar.gz" yak LICENSE README.md
+          done
+
+          (cd dist/release && sha256sum yak-*.tar.gz > SHA256SUMS)
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/release/*

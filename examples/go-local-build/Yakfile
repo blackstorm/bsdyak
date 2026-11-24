@@ -1,0 +1,52 @@
+project "hello" {
+  freebsd = "14.2-RELEASE"
+}
+
+target "prod" {
+  host    = "deploy@203.0.113.10"
+  default = true
+}
+
+image "app" {
+  stage "local-go" {
+    on = "local"
+    env = {
+      CGO_ENABLED = "0"
+      GOOS        = "freebsd"
+      GOARCH      = "amd64"
+    }
+    steps = [
+      "go build -trimpath -o ./dist/hello ./cmd/hello",
+    ]
+  }
+
+  runtime {
+    packages = ["ca_root_nss"]
+    setup    = ["pw useradd -n app -m -s /usr/sbin/nologin"]
+    copy {
+      from = stage.local-go
+      src  = "./dist/hello"
+      dst  = "/app/hello"
+    }
+    user    = "app"
+    workdir = "/app"
+  }
+}
+
+service "web" {
+  image    = image.app
+  strategy = "blue-green"
+  cmd      = "/app/hello"
+  port     = 8080
+
+  healthcheck {
+    http     = "/healthz"
+    interval = "1s"
+    timeout  = "10s"
+  }
+
+  expose {
+    listen = "127.0.0.1:18081"
+    to     = 8080
+  }
+}

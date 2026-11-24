@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# PROVIDE: yakd
+# REQUIRE: FILESYSTEMS NETWORKING pf
+# KEYWORD: shutdown
+#
+# Add the following lines to /etc/rc.conf to enable yakd:
+#
+# yakd_enable (bool):   Set to "NO" by default.
+#                       Set it to "YES" to enable yakd.
+# yakd_config (str):    Path to yak server config.
+#                       Default is "/usr/local/etc/yak.conf".
+
+. /etc/rc.subr
+
+name="yakd"
+rcvar="yakd_enable"
+
+load_rc_config $name
+
+: ${yakd_enable:="NO"}
+: ${yakd_config:="/usr/local/etc/yak.conf"}
+
+pidfile="/var/run/${name}.pid"
+procname="/usr/local/bin/yak"
+command="/usr/sbin/daemon"
+command_args="-f -P ${pidfile} -r -o /var/log/yakd.log -t yakd -T yakd ${procname} server run --config ${yakd_config}"
+
+extra_commands="status"
+
+run_rc_command "$1"
