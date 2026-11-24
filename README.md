@@ -8,7 +8,7 @@
 [![Go](https://img.shields.io/badge/Go-1.24+-00add8.svg)](https://go.dev/)
 [![Docs](https://img.shields.io/badge/docs-bsdyak.com-informational.svg)](https://bsdyak.com)
 
-[Website & Docs (bsdyak.com)](https://bsdyak.com)
+[English](README.md) | [简体中文](README_CN.md) | [Website & Docs (bsdyak.com)](https://bsdyak.com)
 
 ---
 
